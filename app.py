@@ -95,11 +95,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 4. CONNEXION API (NOUVELLE METHODE) ---
+# --- 4. CONNEXION API ---
 try:
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 except Exception:
-    st.error("⚠️ Clé API manquante.")
+    st.error("⚠️ Clé API manquante dans les réglages du site.")
     st.stop()
 
 # --- 5. FONCTION AUDIO ---
@@ -147,34 +147,23 @@ if submitted:
     else:
         with st.spinner(txt["spinner_write"]):
             try:
-                # Prompt Engineering
                 prompt = f"""
                 Role: Storyteller for kids. Language: {txt['lang_code']}.
                 Target audience age: {age}.
-                
-                Elements:
-                - Hero: {child_name}
-                - Companion: {companion if companion else 'Thinking friend'}
-                - Magic Object: {object_magic if object_magic else 'Mystery item'}
-                - Location: {place}
-                - Villain/Obstacle: {villain if villain else 'Surprise obstacle'}
-                - Theme: {theme}
-                - Tone: {style}
-                
-                Format: Markdown. Title with emoji. Around 300 words. Gentle ending.
+                Elements: Hero={child_name}, Companion={companion}, Object={object_magic}, Place={place}, Villain={villain}, Theme={theme}, Tone={style}.
+                Format: Markdown. Title. 300 words. Gentle ending.
                 Important: Write ONLY the story in {txt['lang_code']}.
                 """
                 
-                # APPEL API CORRIGÉ (Modèle 1.5 + Client)
+                # --- MODIFICATION ICI (NOM EXACT) ---
                 response = client.models.generate_content(
-                    model='gemini-1.5-flash', 
+                    model='gemini-1.5-flash-latest', 
                     contents=prompt
                 )
                 
                 story_text = response.text
                 html_story = markdown.markdown(story_text)
                 
-                # Affiche Livre
                 st.markdown(f"""
                 <div class="book-container"><div class="book-page">
                     {html_story}
@@ -184,21 +173,16 @@ if submitted:
                 """, unsafe_allow_html=True)
                 st.balloons()
                 
-                # Audio
                 with st.spinner(txt["spinner_audio"]):
                     clean_text = story_text.replace("#", "").replace("*", "").replace("-", "")
                     audio_file = "story_audio.mp3"
-                    
                     if os.path.exists(audio_file):
                         os.remove(audio_file)
-
                     asyncio.run(generate_audio_file(clean_text, audio_file, txt["voice"]))
-                    
                     st.write("")
                     st.success(txt["success_audio"])
                     st.audio(audio_file)
-
-                # Download
+                    
                 st.download_button(txt["download"], story_text, f"story_{child_name}.md")
 
             except Exception as e:
