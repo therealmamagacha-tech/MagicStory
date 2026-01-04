@@ -1,13 +1,78 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 import markdown
 import asyncio
 import edge_tts
+import os
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="MagicStory", page_icon="🌙", layout="centered")
 
-# --- 2. DESIGN ---
+# --- 2. TEXTES (Langues) ---
+CONTENT = {
+    "Français": {
+        "title": "🌙 MagicStory",
+        "subtitle": "*(Le générateur d'histoires du soir)*",
+        "section_hero": "### 1. Le Héros",
+        "lbl_name": "Prénom",
+        "ph_name": "Ex: Lucas",
+        "lbl_age": "Âge",
+        "lbl_companion": "Compagnon",
+        "ph_companion": "Ex: Un ours",
+        "lbl_object": "Objet spécial (Optionnel)",
+        "ph_object": "Surprise...",
+        "section_adventure": "### 2. L'Aventure",
+        "lbl_place": "Lieu",
+        "ph_place": "Ex: La lune",
+        "lbl_villain": "Méchant / Obstacle (Optionnel)",
+        "ph_villain": "Surprise...",
+        "lbl_theme": "Leçon",
+        "lbl_style": "Style",
+        "btn_submit": "✨ Écrire l'histoire",
+        "warning": "⚠️ Prénom et Lieu obligatoires !",
+        "spinner_write": "🌙 L'IA écrit l'histoire...",
+        "spinner_audio": "🎙️ La conteuse prépare sa voix...",
+        "success_audio": "🎧 Écouter l'histoire :",
+        "download": "📥 Télécharger l'histoire (Texte)",
+        "story_for": "Histoire pour",
+        "themes": ["Le Courage", "Le Partage", "La Patience", "L'Amitié", "La Curiosité"],
+        "styles": ["Calme 💤", "Aventure ⚔️", "Rigolo 😂"],
+        "voice": "fr-FR-VivienneMultilingualNeural",
+        "lang_code": "Français"
+    },
+    "English": {
+        "title": "🌙 MagicStory",
+        "subtitle": "*(The Bedtime Story Generator)*",
+        "section_hero": "### 1. The Hero",
+        "lbl_name": "Name",
+        "ph_name": "Ex: Lucas",
+        "lbl_age": "Age",
+        "lbl_companion": "Companion",
+        "ph_companion": "Ex: A bear",
+        "lbl_object": "Special Object (Optional)",
+        "ph_object": "Surprise...",
+        "section_adventure": "### 2. The Adventure",
+        "lbl_place": "Location",
+        "ph_place": "Ex: The Moon",
+        "lbl_villain": "Villain / Obstacle (Optional)",
+        "ph_villain": "Surprise...",
+        "lbl_theme": "Lesson",
+        "lbl_style": "Style",
+        "btn_submit": "✨ Write the story",
+        "warning": "⚠️ Name and Location are required!",
+        "spinner_write": "🌙 The AI is writing the story...",
+        "spinner_audio": "🎙️ Preparing the voice...",
+        "success_audio": "🎧 Listen to the story:",
+        "download": "📥 Download Story (Text)",
+        "story_for": "Story for",
+        "themes": ["Courage", "Sharing", "Patience", "Friendship", "Curiosity"],
+        "styles": ["Calm 💤", "Adventure ⚔️", "Funny 😂"],
+        "voice": "en-US-AvaMultilingualNeural",
+        "lang_code": "English"
+    }
+}
+
+# --- 3. DESIGN ---
 st.markdown("""
 <style>
     .stApp {
@@ -15,130 +80,126 @@ st.markdown("""
         background-image: linear-gradient(315deg, #0f2027 0%, #203a43 74%, #2c5364 100%);
         color: #ecf0f1;
     }
-    h1, h3 { color: #f1c40f !important; font-family: 'Comic Sans MS', cursive; text-shadow: 0px 2px 5px rgba(0,0,0,0.5); }
+    h1, h3 { color: #f1c40f !important; font-family: 'Comic Sans MS', cursive; }
     label, p { color: #bdc3c7 !important; }
     .stButton>button {
         background-color: #e67e22; color: white; font-weight: bold; border-radius: 10px; border: none; padding: 12px; width: 100%;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: all 0.3s;
     }
-    .stButton>button:hover { background-color: #d35400; transform: translateY(-2px); }
-    
     .book-container { margin-top: 20px; padding: 10px; }
     .book-page {
         background-color: #fcf8e3; color: #2c3e50; padding: 50px; border-radius: 5px 15px 15px 5px;
         box-shadow: inset 30px 0 50px rgba(0,0,0,0.05), 0 10px 30px rgba(0,0,0,0.5);
         border-left: 8px solid #8d6e63; font-family: 'Georgia', serif; line-height: 1.9; font-size: 18px;
     }
-    .book-page h1, .book-page h2 { color: #c0392b !important; text-align: center; font-family: 'Brush Script MT', cursive; margin-bottom: 25px; }
-    .book-page p { color: #2c3e50 !important; text-align: justify; }
-    
-    #MainMenu {visibility: hidden;} footer {visibility: hidden;}
+    .book-page h1 { color: #c0392b !important; text-align: center; font-family: 'Brush Script MT', cursive; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. API ---
+# --- 4. CONNEXION API (NOUVELLE METHODE) ---
 try:
-    api_key = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=api_key)
+    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 except Exception:
     st.error("⚠️ Clé API manquante.")
     st.stop()
 
-# --- 4. FONCTION VOCALE (VOIX HUMAINE) ---
-async def generate_audio_file(text):
-    """Génère un fichier audio avec une voix neurale naturelle"""
-    # Voix disponibles : 'fr-FR-VivienneMultilingualNeural' (Femme), 'fr-FR-RemyMultilingualNeural' (Homme)
-    VOICE = "fr-FR-VivienneMultilingualNeural" 
-    communicate = edge_tts.Communicate(text, VOICE)
-    await communicate.save("story_audio.mp3")
+# --- 5. FONCTION AUDIO ---
+async def generate_audio_file(text, filename, voice_id):
+    communicate = edge_tts.Communicate(text, voice_id)
+    await communicate.save(filename)
 
-# --- 5. INTERFACE ---
-st.title("🌙 MagicStory")
-st.markdown("*(Le générateur d'histoires du soir)*")
+# --- 6. INTERFACE ---
+with st.sidebar:
+    st.markdown("### 🌍 Langue / Language")
+    choice = st.radio("", ["🇫🇷 Français", "🇺🇸 English"], label_visibility="collapsed")
+
+lang_key = "Français" if "Français" in choice else "English"
+txt = CONTENT[lang_key]
+
+st.title(txt["title"])
+st.markdown(txt["subtitle"])
 
 with st.form("story_form"):
-    st.markdown("### 1. Le Héros")
+    st.markdown(txt["section_hero"])
     c1, c2 = st.columns(2)
     with c1:
-        child_name = st.text_input("Prénom", placeholder="Ex: Lucas")
-        age = st.slider("Âge", 2, 12, 5)
+        child_name = st.text_input(txt["lbl_name"], placeholder=txt["ph_name"])
+        age = st.slider(txt["lbl_age"], 2, 12, 5)
     with c2:
-        companion = st.text_input("Compagnon", placeholder="Ex: Un ours")
-        object_magic = st.text_input("Objet spécial (Optionnel)", placeholder="Surprise...")
+        companion = st.text_input(txt["lbl_companion"], placeholder=txt["ph_companion"])
+        object_magic = st.text_input(txt["lbl_object"], placeholder=txt["ph_object"])
 
-    st.markdown("### 2. L'Aventure")
+    st.markdown(txt["section_adventure"])
     c3, c4 = st.columns(2)
     with c3:
-        place = st.text_input("Lieu", placeholder="Ex: La lune")
-        villain = st.text_input("Méchant / Obstacle (Optionnel)", placeholder="Surprise...")
+        place = st.text_input(txt["lbl_place"], placeholder=txt["ph_place"])
+        villain = st.text_input(txt["lbl_villain"], placeholder=txt["ph_villain"])
     with c4:
-        theme = st.selectbox("Leçon", ["Le Courage", "Le Partage", "La Patience", "L'Amitié", "La Curiosité"])
-        style = st.select_slider("Style", options=["Calme 💤", "Aventure ⚔️", "Rigolo 😂"])
+        theme = st.selectbox(txt["lbl_theme"], txt["themes"])
+        style = st.select_slider(txt["lbl_style"], options=txt["styles"])
 
     st.write("")
-    submitted = st.form_submit_button("✨ Écrire l'histoire")
+    submitted = st.form_submit_button(txt["btn_submit"])
 
-# --- 6. GÉNÉRATION ---
+# --- 7. GÉNÉRATION ---
 if submitted:
     if not child_name or not place:
-        st.warning("⚠️ Prénom et Lieu obligatoires !")
+        st.warning(txt["warning"])
     else:
-        with st.spinner("🌙 L'IA écrit l'histoire..."):
+        with st.spinner(txt["spinner_write"]):
             try:
-                model='gemini-1.5-flash',
-                
-                # Prompt
-                villain_prompt = villain if villain else "Un obstacle surprenant"
-                object_prompt = object_magic if object_magic else "Un objet mystérieux"
-                companion_prompt = companion if companion else "Un ami imaginaire"
-
+                # Prompt Engineering
                 prompt = f"""
-                Rédige une histoire pour un enfant de {age} ans.
-                - Héros : {child_name} ({age} ans)
-                - Ami : {companion_prompt}
-                - Objet : {object_prompt}
-                - Lieu : {place}
-                - Obstacle : {villain_prompt}
-                - Morale : {theme}
-                - Ton : {style}
+                Role: Storyteller for kids. Language: {txt['lang_code']}.
+                Target audience age: {age}.
                 
-                Format Markdown. Titre avec émoji. ~300 mots. Fin douce.
+                Elements:
+                - Hero: {child_name}
+                - Companion: {companion if companion else 'Thinking friend'}
+                - Magic Object: {object_magic if object_magic else 'Mystery item'}
+                - Location: {place}
+                - Villain/Obstacle: {villain if villain else 'Surprise obstacle'}
+                - Theme: {theme}
+                - Tone: {style}
+                
+                Format: Markdown. Title with emoji. Around 300 words. Gentle ending.
+                Important: Write ONLY the story in {txt['lang_code']}.
                 """
                 
-                response = model.generate_content(prompt)
+                # APPEL API CORRIGÉ (Modèle 1.5 + Client)
+                response = client.models.generate_content(
+                    model='gemini-1.5-flash', 
+                    contents=prompt
+                )
+                
                 story_text = response.text
                 html_story = markdown.markdown(story_text)
                 
-                # --- AFFICHAGE LIVRE ---
+                # Affiche Livre
                 st.markdown(f"""
                 <div class="book-container"><div class="book-page">
                     {html_story}
                     <br><hr style="border: 1px dashed #dcdcdc;">
-                    <center style="color: #7f8c8d; font-size: 14px;">Histoire pour {child_name}</center>
+                    <center style="color: #7f8c8d; font-size: 14px;">{txt['story_for']} {child_name}</center>
                 </div></div>
                 """, unsafe_allow_html=True)
                 st.balloons()
                 
-                # --- AUDIO NEURAL (REALISTE) ---
-                with st.spinner("🎙️ La conteuse prépare sa voix (c'est beaucoup plus joli !)..."):
-                    # Nettoyage du texte pour la lecture
+                # Audio
+                with st.spinner(txt["spinner_audio"]):
                     clean_text = story_text.replace("#", "").replace("*", "").replace("-", "")
+                    audio_file = "story_audio.mp3"
                     
-                    # Appel asynchrone pour générer l'audio
-                    asyncio.run(generate_audio_file(clean_text))
+                    if os.path.exists(audio_file):
+                        os.remove(audio_file)
+
+                    asyncio.run(generate_audio_file(clean_text, audio_file, txt["voice"]))
                     
                     st.write("")
-                    st.success("🎧 Écouter la conteuse :")
-                    st.audio("story_audio.mp3", format='audio/mp3')
+                    st.success(txt["success_audio"])
+                    st.audio(audio_file)
 
-                # --- TÉLÉCHARGEMENT ---
-                st.write("")
-                st.download_button(
-                    label="📥 Télécharger l'histoire (Texte)",
-                    data=story_text,
-                    file_name=f"histoire_{child_name}.md",
-                    mime="text/markdown"
-                )
+                # Download
+                st.download_button(txt["download"], story_text, f"story_{child_name}.md")
 
             except Exception as e:
-                st.error(f"Erreur : {e}")
+                st.error(f"Error: {e}")
