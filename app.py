@@ -157,7 +157,7 @@ if submitted:
                 
                 # --- MODIFICATION ICI (NOM EXACT) ---
                 response = client.models.generate_content(
-                    model='gemini-1.5-flash-latest', 
+                    model='gemini-2.5-flash', 
                     contents=prompt
                 )
                 
@@ -187,3 +187,4 @@ if submitted:
 
             except Exception as e:
                 st.error(f"Error: {e}")
+
